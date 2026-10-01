@@ -190,6 +190,14 @@ function mapEvent(item) {
     notes:cv(item,ECOL.notes)||"",
   };
 }
+function mapCorp(item){
+  return {id:item.id, name:item.name,
+    contact:cv(item,CPCOL.contact), email:cv(item,CPCOL.email), phone:cv(item,CPCOL.phone),
+    ptype:cv(item,CPCOL.ptype), stage:cv(item,CPCOL.stage)||"Outreach",
+    revenue:cvNum(item,CPCOL.revenue), nextAction:cv(item,CPCOL.nextAction),
+    nextDate:cv(item,CPCOL.nextDate), pastFunder:cvBool(item,CPCOL.pastFunder),
+    supportType:cv(item,CPCOL.supportType)};
+}
 
 function mapReport(item) {
   const notesRaw = item.column_values?.find(c=>c.id===RCOL.notes);
@@ -309,6 +317,17 @@ const ECOL = {
   status:"color_mm1jn9bk", quarter:"dropdown_mm1jjbb2",
   date:"date_mm1j6vh6", revenue:"numeric_mm1jwv1p", notes:"long_text_mm1j7mqw",
 };
+// Corporate Partnerships board (board 18421286851 — pipeline + corporate boxing classes)
+const CORP_BOARD = "18421286851";
+const CPCOL = {
+  contact:"text_mm53c1kk", email:"email_mm53fjc1", phone:"phone_mm53pn13",
+  ptype:"dropdown_mm53f960", stage:"color_mm53jwp5", revenue:"numeric_mm53qhhm",
+  nextAction:"text_mm53rryr", nextDate:"date_mm53a345", pastFunder:"boolean_mm537y69",
+  supportType:"dropdown_mm53et33",
+};
+const CORP_STAGES=["Outreach","In Conversation","Proposal Sent","Active","Stewardship","Stuck"];
+const CORP_STAGE_COLORS={"Outreach":{bg:"#fef9c3",color:"#854d0e"},"In Conversation":{bg:"#dbeafe",color:"#1d4ed8"},"Proposal Sent":{bg:"#e0f2fe",color:"#0369a1"},"Active":{bg:"#f3e8ff",color:"#7e22ce"},"Stewardship":{bg:"#dcfce7",color:"#166534"},"Stuck":{bg:"#fee2e2",color:"#991b1b"},"Working on it":{bg:"#fef3c7",color:"#92400e"},"Done":{bg:"#dcfce7",color:"#166534"}};
+const CORP_TYPES=["Boxing Class","School Sponsorship"];
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 function GProgressBar({value,total,color,height=6}){const pct=total>0?Math.min(100,Math.round(value/total*100)):0;return(<div style={{background:"#e2e8f0",borderRadius:99,height,flex:1,overflow:"hidden"}}><div style={{width:pct+"%",background:color,height:"100%",borderRadius:99,transition:"width 0.3s"}}/></div>);}
@@ -1401,10 +1420,136 @@ function BudgetRevenueTab({grants,otherRev,setOtherRev,editBudget,setEditBudget,
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
+
+// ── Corporate Partnerships Tab ────────────────────────────────────────────────
+function CorporateTab({corps,setCorps,loading,flash}){
+  const [typeFilter,setTypeFilter]=useState("All");
+  const [showAddC,setShowAddC]=useState(false);
+  const [deleteCId,setDeleteCId]=useState(null);
+  const EMPTYC={name:"",contact:"",email:"",phone:"",ptype:"",stage:"Outreach",revenue:"",nextAction:"",nextDate:""};
+  const [nc,setNc]=useState(EMPTYC);
+  const rows=useMemo(()=>{
+    let r=[...corps];
+    if(typeFilter==="Boxing Class")r=r.filter(c=>c.ptype==="Boxing Class");
+    else if(typeFilter==="School Sponsorship")r=r.filter(c=>c.ptype==="School Sponsorship");
+    else if(typeFilter==="Other")r=r.filter(c=>!CORP_TYPES.includes(c.ptype));
+    const order=Object.fromEntries(CORP_STAGES.map((s,i)=>[s,i]));
+    return r.sort((a,b)=>(order[a.stage]??9)-(order[b.stage]??9)||(a.nextDate||"9999").localeCompare(b.nextDate||"9999"));
+  },[corps,typeFilter]);
+  const revYTD=corps.reduce((s,c)=>s+(c.revenue||0),0);
+  const boxingRev=corps.filter(c=>c.ptype==="Boxing Class").reduce((s,c)=>s+(c.revenue||0),0);
+  const activeCount=corps.filter(c=>["Active","Stewardship"].includes(c.stage)).length;
+  const saveField=async(id,col,val,local)=>{
+    setCorps(p=>p.map(c=>c.id===id?{...c,...local}:c));flash("Saving...");
+    try{await mUpdate(CORP_BOARD,id,{[col]:val});flash();}catch{flash("Save failed");}
+  };
+  const setStage=async(id,stage)=>{
+    setCorps(p=>p.map(c=>c.id===id?{...c,stage}:c));flash("Saving...");
+    try{await mUpdate(CORP_BOARD,id,{[CPCOL.stage]:{label:stage}});flash();}catch{flash("Save failed");}
+  };
+  const setType=async(id,ptype)=>{
+    setCorps(p=>p.map(c=>c.id===id?{...c,ptype}:c));flash("Saving...");
+    try{await mUpdate(CORP_BOARD,id,ptype?{[CPCOL.ptype]:{labels:[ptype]}}:{[CPCOL.ptype]:null},true);flash();}catch{flash("Save failed");}
+  };
+  const addCorp=async()=>{
+    if(!nc.name.trim())return;flash("Saving...");
+    try{
+      const cvals={[CPCOL.stage]:{label:nc.stage}};
+      if(nc.contact)cvals[CPCOL.contact]=nc.contact;
+      if(nc.email)cvals[CPCOL.email]={email:nc.email,text:nc.email};
+      if(nc.phone)cvals[CPCOL.phone]=nc.phone;
+      if(nc.ptype)cvals[CPCOL.ptype]={labels:[nc.ptype]};
+      if(nc.revenue)cvals[CPCOL.revenue]=parseNum(String(nc.revenue))||0;
+      if(nc.nextAction)cvals[CPCOL.nextAction]=nc.nextAction;
+      if(nc.nextDate)cvals[CPCOL.nextDate]={date:nc.nextDate};
+      const id=await mCreate(CORP_BOARD,nc.name.trim(),cvals,true);
+      setCorps(p=>[...p,{id,name:nc.name.trim(),contact:nc.contact,email:nc.email,phone:nc.phone,ptype:nc.ptype,stage:nc.stage,revenue:parseNum(String(nc.revenue))||0,nextAction:nc.nextAction,nextDate:nc.nextDate,pastFunder:false,supportType:""}]);
+      setNc(EMPTYC);setShowAddC(false);flash();
+    }catch{flash("Save failed");}
+  };
+  const deleteCorp=async(id)=>{
+    setCorps(p=>p.filter(c=>c.id!==id));setDeleteCId(null);flash("Deleting...");
+    try{await mDelete(id);flash("Deleted ✓");}catch{flash("Delete failed");}
+  };
+  if(loading)return(<div style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Loading from monday.com...</div>);
+  return(<div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+      {[{label:"Partners in Pipeline",val:corps.length,money:false,color:"#1877F2",bg:"#dbeafe"},
+        {label:"Active + Stewardship",val:activeCount,money:false,color:"#037f4c",bg:"#d1fae5"},
+        {label:"Corporate Revenue YTD",val:revYTD,money:true,color:"#854F0B",bg:"#fef3c7"},
+        {label:"Boxing Class Revenue",val:boxingRev,money:true,color:"#7e22ce",bg:"#f3e8ff"}].map(s=>(
+        <div key={s.label} style={{background:s.bg,borderRadius:10,padding:"12px 14px"}}>
+          <div style={{fontSize:11,color:s.color,fontWeight:700}}>{s.label}</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#1e293b",marginTop:2}}>{s.money?fmt(s.val):s.val}</div>
+        </div>))}
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+      {["All","Boxing Class","School Sponsorship","Other"].map(t=>(
+        <button key={t} onClick={()=>setTypeFilter(t)} style={{padding:"5px 12px",borderRadius:99,border:"1px solid "+(typeFilter===t?"#854F0B":"#e2e8f0"),background:typeFilter===t?"#854F0B":"white",color:typeFilter===t?"white":"#64748b",fontSize:12,cursor:"pointer",fontWeight:600}}>{t==="Boxing Class"?"🥊 Boxing Classes":t}</button>))}
+      <span style={{fontSize:10,background:"#e0f2fe",color:"#0369a1",borderRadius:99,padding:"1px 7px"}}>live monday.com</span>
+      <button onClick={()=>setShowAddC(true)} style={{marginLeft:"auto",padding:"6px 14px",background:"#1877F2",color:"white",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>+ Add partner</button>
+    </div>
+    {typeFilter==="Boxing Class"&&<div style={{background:"#f3e8ff",border:"1px solid #d8b4fe",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#6b21a8"}}>Corporate boxing classes live here: track the company, contact, class revenue, and the next booking under Next Action. Revenue entered here rolls into the Corporate Revenue YTD card above.</div>}
+    <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"1.6fr 1.3fr 1fr 1.1fr 0.8fr 1.8fr 0.9fr 30px",gap:8,padding:"9px 14px",background:"#f8fafc",fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase"}}>
+        <div>Company</div><div>Contact</div><div>Type</div><div>Stage</div><div>Revenue</div><div>Next Action</div><div>Due</div><div></div>
+      </div>
+      {rows.length===0?<div style={{padding:30,textAlign:"center",color:"#94a3b8",fontSize:13}}>No partners in this view yet.</div>:rows.map(c=>{
+        const sc=CORP_STAGE_COLORS[c.stage]||{bg:"#f1f5f9",color:"#64748b"};
+        const days=daysUntil(c.nextDate);
+        return(<div key={c.id} style={{display:"grid",gridTemplateColumns:"1.6fr 1.3fr 1fr 1.1fr 0.8fr 1.8fr 0.9fr 30px",gap:8,padding:"10px 14px",borderTop:"0.5px solid #e2e8f0",alignItems:"center"}}>
+          <div><div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{c.name}{c.pastFunder&&<span title="Past grant funder" style={{marginLeft:6,fontSize:10,background:"#dcfce7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700}}>past funder</span>}</div></div>
+          <div style={{fontSize:12,color:"#475569",overflow:"hidden"}}>
+            <EField value={c.contact} onSave={v=>saveField(c.id,CPCOL.contact,v,{contact:v})}/>
+            {c.email&&<a href={"mailto:"+c.email} style={{fontSize:11,color:"#1877F2",textDecoration:"none"}}>{c.email}</a>}
+          </div>
+          <div><select value={CORP_TYPES.includes(c.ptype)?c.ptype:""} onChange={e=>setType(c.id,e.target.value)} style={{fontSize:11,padding:"4px 6px",borderRadius:6,border:"1px solid #e2e8f0",width:"100%",background:"white",color:"#475569"}}>
+            <option value="">{"—"}</option>{CORP_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+          </select></div>
+          <div><select value={c.stage} onChange={e=>setStage(c.id,e.target.value)} style={{fontSize:11,padding:"4px 6px",borderRadius:99,border:"none",fontWeight:700,background:sc.bg,color:sc.color,cursor:"pointer"}}>
+            {[...new Set([...CORP_STAGES,c.stage])].map(s=><option key={s} value={s}>{s}</option>)}
+          </select></div>
+          <div style={{fontSize:12,fontWeight:600,color:"#854F0B"}}>
+            <EField value={c.revenue?String(c.revenue):""} onSave={v=>{const n=parseNum(String(v))||0;saveField(c.id,CPCOL.revenue,n,{revenue:n});}}/>
+          </div>
+          <div style={{fontSize:12,color:"#475569"}}><EField value={c.nextAction} onSave={v=>saveField(c.id,CPCOL.nextAction,v,{nextAction:v})}/></div>
+          <div style={{fontSize:11}}>
+            <input type="date" value={c.nextDate||""} onChange={e=>saveField(c.id,CPCOL.nextDate,e.target.value?{date:e.target.value}:null,{nextDate:e.target.value})} style={{fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid #e2e8f0",width:"100%"}}/>
+            {days!==null&&days>=0&&days<=7&&<div style={{color:"#ef4444",fontWeight:700,fontSize:10,marginTop:2}}>{days===0?"today":days+"d"}</div>}
+            {days!==null&&days<0&&<div style={{color:"#94a3b8",fontWeight:600,fontSize:10,marginTop:2}}>overdue</div>}
+          </div>
+          <div><button onClick={()=>setDeleteCId(c.id)} title="Delete" style={{border:"none",background:"transparent",color:"#cbd5e1",cursor:"pointer",fontSize:14}}>{"×"}</button></div>
+        </div>);})}
+    </div>
+    {showAddC&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"white",borderRadius:14,padding:24,width:480,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+      <h3 style={{margin:"0 0 16px",fontSize:15,fontWeight:700}}>{"Add Corporate Partner → monday.com"}</h3>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>COMPANY NAME *</div><input value={nc.name} autoFocus onChange={e=>setNc({...nc,name:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>CONTACT NAME</div><input value={nc.contact} onChange={e=>setNc({...nc,contact:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>EMAIL</div><input value={nc.email} onChange={e=>setNc({...nc,email:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>PHONE</div><input value={nc.phone} onChange={e=>setNc({...nc,phone:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>PARTNERSHIP TYPE</div><select value={nc.ptype} onChange={e=>setNc({...nc,ptype:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,background:"white"}}><option value="">{"—"}</option>{CORP_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>STAGE</div><select value={nc.stage} onChange={e=>setNc({...nc,stage:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,background:"white"}}>{CORP_STAGES.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>REVENUE YTD ($)</div><input value={nc.revenue} onChange={e=>setNc({...nc,revenue:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>NEXT ACTION DATE</div><input type="date" value={nc.nextDate} onChange={e=>setNc({...nc,nextDate:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+        <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>NEXT ACTION</div><input value={nc.nextAction} onChange={e=>setNc({...nc,nextAction:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+      </div>
+      <div style={{display:"flex",gap:8}}><button onClick={addCorp} style={{flex:1,padding:9,background:"#1877F2",color:"white",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Add to monday.com</button><button onClick={()=>{setShowAddC(false);setNc(EMPTYC);}} style={{flex:1,padding:9,background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Cancel</button></div>
+    </div></div>)}
+    {deleteCId&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"white",borderRadius:14,padding:24,width:360,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+      <div style={{fontSize:14,fontWeight:700,marginBottom:8}}>Delete this partner?</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>This removes it from the monday.com board too.</div>
+      <div style={{display:"flex",gap:8}}><button onClick={()=>deleteCorp(deleteCId)} style={{flex:1,padding:9,background:"#ef4444",color:"white",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Delete</button><button onClick={()=>setDeleteCId(null)} style={{flex:1,padding:9,background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Cancel</button></div>
+    </div></div>)}
+  </div>);
+}
+
 function App(){
   const [grants,setGrants]=useState([]);
   const [funders,setFunders]=useState([]);
   const [events,setEvents]=useState([]);
+  const [corps,setCorps]=useState([]);
+  const [loadingCorps,setLoadingCorps]=useState(true);
   const [loading,setLoading]=useState({grants:true,funders:true,events:true});
   const [reports,setReports]=useState([]);
   const [loadingReports,setLoadingReports]=useState(true);
@@ -1454,6 +1599,10 @@ function App(){
     fetchItems(EVENTS_BOARD, Object.values(ECOL))
       .then(items=>{setEvents(items.map(mapEvent));setLoading(p=>({...p,events:false}));})
       .catch(e=>{console.error("Events load error:",e);setLoading(p=>({...p,events:false}));}); 
+    setLoadingCorps(true);
+    fetchItems(CORP_BOARD, Object.values(CPCOL))
+      .then(items=>{setCorps(items.map(mapCorp));setLoadingCorps(false);})
+      .catch(e=>{console.error("Corporate load error:",e);setLoadingCorps(false);});
     setLoadingReports(true);
     fetchItems(REPORTS_BOARD, Object.values(RCOL))
       .then(items=>{setReports(items.map(mapReport));setLoadingReports(false);})
@@ -1656,7 +1805,7 @@ function App(){
       </div>
     </div>
 
-    <div style={{display:"flex",gap:3,marginBottom:18,background:"#e2e8f0",borderRadius:8,padding:3}}>{["Dashboard","Grant Applications","Forecasting","Budget","Tools"].map(t=>(<button key={t} onClick={()=>setMainTab(t)} style={{flex:1,padding:"9px",borderRadius:6,border:"none",cursor:"pointer",background:mainTab===t?"white":"transparent",fontWeight:mainTab===t?700:400,color:mainTab===t?"#1e293b":"#64748b",fontSize:13,boxShadow:mainTab===t?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{t}</button>))}</div>
+    <div style={{display:"flex",gap:3,marginBottom:18,background:"#e2e8f0",borderRadius:8,padding:3}}>{["Dashboard","Grant Applications","Corporate","Forecasting","Budget","Tools"].map(t=>(<button key={t} onClick={()=>setMainTab(t)} style={{flex:1,padding:"9px",borderRadius:6,border:"none",cursor:"pointer",background:mainTab===t?"white":"transparent",fontWeight:mainTab===t?700:400,color:mainTab===t?"#1e293b":"#64748b",fontSize:13,boxShadow:mainTab===t?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{t}</button>))}</div>
 
     {/* ── DASHBOARD ── */}
     {mainTab==="Dashboard"&&(<div>
@@ -1735,6 +1884,8 @@ function App(){
     </div>)}
 
     {/* ── FORECASTING ── */}
+    {mainTab==="Corporate"&&<CorporateTab corps={corps} setCorps={setCorps} loading={loadingCorps} flash={flash}/>}
+
     {mainTab==="Forecasting"&&<ForecastTab grants={grants} setGrants={setGrants} flash={flash}/>}
 
     {/* ── BUDGET ── */}
