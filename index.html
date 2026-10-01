@@ -1430,7 +1430,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
   const [nc,setNc]=useState(EMPTYC);
   const rows=useMemo(()=>{
     let r=[...corps];
-    if(typeFilter==="Boxing Class")r=r.filter(c=>c.ptype==="Boxing Class");
+    if(typeFilter==="Boxing Class")r=r.filter(c=>{if(c.ptype!=="Boxing Class")return false;const d=daysUntil(c.nextDate);return c.stage==="Active"&&d!==null&&d>=0;});
     else if(typeFilter==="School Sponsorship")r=r.filter(c=>c.ptype==="School Sponsorship");
     else if(typeFilter==="Other")r=r.filter(c=>!CORP_TYPES.includes(c.ptype));
     const order=Object.fromEntries(CORP_STAGES.map((s,i)=>[s,i]));
@@ -1489,7 +1489,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
       <span style={{fontSize:10,background:"#e0f2fe",color:"#0369a1",borderRadius:99,padding:"1px 7px"}}>live monday.com</span>
       <button onClick={()=>setShowAddC(true)} style={{marginLeft:"auto",padding:"6px 14px",background:"#1877F2",color:"white",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>+ Add partner</button>
     </div>
-    {typeFilter==="Boxing Class"&&<div style={{background:"#f3e8ff",border:"1px solid #d8b4fe",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#6b21a8"}}>Corporate boxing classes live here: track the company, contact, class revenue, and the next booking under Next Action. Revenue entered here rolls into the Corporate Revenue YTD card above.</div>}
+    {typeFilter==="Boxing Class"&&<div style={{background:"#f3e8ff",border:"1px solid #d8b4fe",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#6b21a8"}}>Scheduled classes only: a class appears here while its partner sits at the Active stage with the class date in Due. Once delivered, move the partner to Stewardship and it leaves this list (still under All). Revenue keeps rolling into the cards above.</div>}
     <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
       <div style={{display:"grid",gridTemplateColumns:"1.6fr 1.3fr 1fr 1.1fr 0.8fr 1.8fr 0.9fr 30px",gap:8,padding:"9px 14px",background:"#f8fafc",fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase"}}>
         <div>Company</div><div>Contact</div><div>Type</div><div>Stage</div><div>Revenue</div><div>Next Action</div><div>Due</div><div></div>
