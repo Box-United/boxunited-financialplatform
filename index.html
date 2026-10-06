@@ -136,6 +136,8 @@ function mapGrant(item) {
     org:cv(item,GCOL.org), status, confidence,
     requested:cvNum(item,GCOL.requested), awarded:cvNum(item,GCOL.awarded),
     appYear, appQuarter:appQuarterFromSubmit,
+    awardedYear:parseInt(cv(item,GCOL.awardedYear))||appYear,
+    awardedQuarter:parseInt(cv(item,GCOL.awardedQuarter))||appQuarterFromSubmit,
     appOpen:cv(item,GCOL.appOpen), appClose:cv(item,GCOL.appClose),
     submitted:cv(item,GCOL.submitted), notes,
     inForecast: hasForecasts || appYear>=2026,
@@ -288,6 +290,7 @@ const MEETING_STATUS_COLORS = {
 const GCOL = {
   org:"text_mm01ypb5", status:"color_mm01bzq2", requested:"numeric_mm01cc7h",
   awarded:"numeric_mm01xcyz", year:"dropdown_mm012b2n", quarter:"dropdown_mm0181ph",
+  awardedYear:"dropdown_mm7wv53b", awardedQuarter:"dropdown_mm7wp0ap",
   appOpen:"date_mm01bj7a", appClose:"date_mm01zbyn", submitted:"date_mm01z2h3",
   notes:"long_text_mm01ndrv",
   confidence:"text_mm1jxq3x",
@@ -401,7 +404,7 @@ function GoalsTracker({grants,events,setEvents,loadingEvents,corps,flash}){
   };
 
   const subRows=useMemo(()=>grants.filter(g=>g.appYear===2026&&["Submitted","Awarded","Rejected"].includes(g.status)).map(g=>({...g,quarter:QN_TO_LABEL[g.appQuarter]||"Q1"})),[grants]);
-  const awdRows=useMemo(()=>grants.filter(g=>g.appYear===2026&&g.status==="Awarded").map(g=>({...g,quarter:QN_TO_LABEL[g.appQuarter]||"Q1"})),[grants]);
+  const awdRows=useMemo(()=>grants.filter(g=>g.awardedYear===2026&&g.status==="Awarded").map(g=>({...g,quarter:QN_TO_LABEL[g.awardedQuarter]||"Q1"})),[grants]);
   const qEvents=events.filter(e=>e.quarter===activeQ);
   const qRevTotal=qEvents.reduce((s,e)=>s+(e.revenue||0),0);
 
@@ -1675,7 +1678,9 @@ function App(){
         [GCOL.fq1]:fa26[0],[GCOL.fq2]:fa26[1],[GCOL.fq3]:fa26[2],[GCOL.fq4]:fa26[3],
         [GCOL.fq1_27]:fa27[0],[GCOL.fq2_27]:fa27[1],[GCOL.fq3_27]:fa27[2],[GCOL.fq4_27]:fa27[3],
         [GCOL.quarter]:{labels:[String(editDraft.appQuarter||1)]},
-        [GCOL.year]:{labels:[String(editDraft.appYear||2026)]}};
+        [GCOL.year]:{labels:[String(editDraft.appYear||2026)]},
+        [GCOL.awardedQuarter]:{labels:[String(editDraft.awardedQuarter||editDraft.appQuarter||1)]},
+        [GCOL.awardedYear]:{labels:[String(editDraft.awardedYear||editDraft.appYear||2026)]}};
       if(editDraft.org!=null)cv2[GCOL.org]=editDraft.org;
       if(editDraft.requested!=null)cv2[GCOL.requested]=parseNum(String(editDraft.requested))||0;
       if(editDraft.awarded!=null)cv2[GCOL.awarded]=parseNum(String(editDraft.awarded))||0;
@@ -1896,7 +1901,7 @@ function App(){
                 <td style={{padding:"7px 9px",color:"#64748b",minWidth:90,fontSize:10}}>{g.org}</td>
                 <td style={{padding:"7px 9px",minWidth:90}}><select value={g.status} onChange={e=>updateGrantStatus(g.id,e.target.value)} style={{padding:"2px 4px",borderRadius:5,border:"1px solid "+sc.color,fontSize:10,color:sc.color,background:sc.bg,fontWeight:600,cursor:"pointer"}}>{Object.keys(STATUS_COLORS).map(s=><option key={s} value={s}>{s}</option>)}</select></td>
                 <td style={{padding:"7px 9px"}}><span style={{fontSize:9,background:cc.bg,color:cc.color,borderRadius:99,padding:"2px 6px",fontWeight:600,whiteSpace:"nowrap"}}>{cc.label.split("(")[0].trim()}</span></td>
-                <td style={{padding:"7px 9px",color:"#64748b",whiteSpace:"nowrap"}}>{g.appYear} Q{g.appQuarter}</td>
+                <td style={{padding:"7px 9px",color:"#64748b",whiteSpace:"nowrap"}}>{g.appYear} Q{g.appQuarter}{g.status==="Awarded"&&(g.awardedQuarter!==g.appQuarter||g.awardedYear!==g.appYear)&&<div style={{fontSize:9,color:"#0F6E56",fontWeight:600}}>awd {g.awardedYear} Q{g.awardedQuarter}</div>}</td>
                 <td style={{padding:"7px 9px",color:"#64748b",fontSize:10,whiteSpace:"nowrap"}}>{g.appOpen||"—"}</td>
                 <td style={{padding:"7px 9px",fontSize:10,whiteSpace:"nowrap"}}>{al?(<span style={{background:al.color==="#ef4444"?"#fee2e2":"#fef3c7",color:al.color,padding:"2px 5px",borderRadius:99,fontSize:9,fontWeight:700}}>{al.label}</span>):(<span style={{color:"#64748b"}}>{g.appClose||"—"}</span>)}</td>
                 <td style={{padding:"7px 9px",color:g.submitted?"#1877F2":"#94a3b8",fontSize:10,whiteSpace:"nowrap",fontWeight:g.submitted?600:400}}>{g.submitted||"—"}</td>
@@ -1978,8 +1983,8 @@ function App(){
 
       {toolTab==="Export"&&(()=>{
         const exportCSV=(rows,filename)=>{
-          const headers=["Grant","Org","Status","Confidence","Year","Quarter","Requested","Awarded","Grant Type","App Opens","App Closes","Submitted","Notes"];
-          const lines=[headers.join(","),...rows.map(g=>[g.name,g.org||"",g.status,g.confidence,g.appYear,g.appQuarter,g.requested||0,g.awarded||0,g.grantType||"",g.appOpen||"",g.appClose||"",g.submitted||"",'\"'+(g.notes||"").replace(/"/g,"''")+'\"'].join(","))];
+          const headers=["Grant","Org","Status","Confidence","Year","Quarter","Awarded Year","Awarded Quarter","Requested","Awarded","Grant Type","App Opens","App Closes","Submitted","Notes"];
+          const lines=[headers.join(","),...rows.map(g=>[g.name,g.org||"",g.status,g.confidence,g.appYear,g.appQuarter,g.awardedYear||"",g.awardedQuarter||"",g.requested||0,g.awarded||0,g.grantType||"",g.appOpen||"",g.appClose||"",g.submitted||"",'\"'+(g.notes||"").replace(/"/g,"''")+'\"'].join(","))];
           const blob=new Blob([lines.join("\n")],{type:"text/csv"});
           const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
         };
@@ -2141,7 +2146,7 @@ function App(){
     {/* ── EDIT GRANT MODAL ── */}
     {editId&&editDraft&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"white",borderRadius:14,padding:24,width:540,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
       <h3 style={{margin:"0 0 6px",fontSize:15,fontWeight:700}}>Edit: {editDraft.name}</h3>
-      <div style={{background:"#e0f2fe",borderRadius:7,padding:"7px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>Changes sync to monday.com. <strong>App Year/Quarter</strong> = when you applied. <strong>Forecast amounts</strong> = when you expect to receive funds.</div>
+      <div style={{background:"#e0f2fe",borderRadius:7,padding:"7px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>Changes sync to monday.com. <strong>App Year/Quarter</strong> = when you applied. <strong>Awarded Year/Quarter</strong> = when it was awarded (Goals tab). <strong>Forecast amounts</strong> = when you expect to receive funds.</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
         <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>GRANT NAME</label><input value={editDraft.name||""} onChange={e=>setEditDraft(p=>({...p,name:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/></div>
         <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>ORGANIZATION <span style={{fontWeight:400,color:"#94a3b8"}}>(funder name — saved to monday.com)</span></label>
@@ -2168,6 +2173,7 @@ function App(){
         <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>DATE SUBMITTED <span style={{fontWeight:400,color:"#94a3b8"}}>(auto-sets App Quarter)</span></label><input value={editDraft.submitted||""} onChange={e=>{const v=e.target.value;const m=new Date(v).getMonth()+1;const aq=!isNaN(m)&&v?(m<=3?1:m<=6?2:m<=9?3:4):editDraft.appQuarter;setEditDraft(p=>({...p,submitted:v,appQuarter:aq}));}} type="date" style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/></div>
         <div><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>REQUESTED</label><input type="number" value={editDraft.requested||0} onChange={e=>setEditDraft(p=>({...p,requested:Number(e.target.value)}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/></div>
         <div><label style={{fontSize:11,fontWeight:600,color:"#0ea5e9",display:"block",marginBottom:3}}>TOTAL AWARDED</label><input type="number" value={editDraft.awarded||0} onChange={e=>setEditDraft(p=>({...p,awarded:Number(e.target.value)}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #bae6fd",fontSize:12,boxSizing:"border-box"}}/></div>
+        <div style={{gridColumn:"1/-1",background:"#f0fdf4",borderRadius:8,padding:"10px 12px",border:"1px solid #bbf7d0"}}><div style={{fontSize:11,fontWeight:700,color:"#0F6E56",marginBottom:8}}>🏆 Quarter Awarded (for Goals tracking)</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>AWARDED YEAR</label><select value={editDraft.awardedYear||editDraft.appYear||2026} onChange={e=>setEditDraft(p=>({...p,awardedYear:parseInt(e.target.value)}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,background:"white",boxSizing:"border-box"}}>{[2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}</select></div><div><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>AWARDED QUARTER</label><select value={editDraft.awardedQuarter||editDraft.appQuarter||1} onChange={e=>setEditDraft(p=>({...p,awardedQuarter:parseInt(e.target.value)}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,background:"white",boxSizing:"border-box"}}>{[1,2,3,4].map(q=><option key={q} value={q}>Q{q}</option>)}</select></div></div><div style={{fontSize:10,color:"#64748b",marginTop:6}}>This sets which quarter the award counts toward on the Goals tab. Defaults to the App Quarter until you change it.</div></div>
         <div><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>GRANT TYPE</label><select value={editDraft.grantType||""} onChange={e=>setEditDraft(p=>({...p,grantType:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box",background:"white"}}><option value="">— Select —</option>{["Government","Corporate","Foundation"].map(t=><option key={t} value={t}>{t}</option>)}</select></div>
         <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>APPLICATION LINK</label><input value={editDraft.appLink||""} onChange={e=>setEditDraft(p=>({...p,appLink:e.target.value}))} placeholder="https://..." style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/></div>
         <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>NOTES</label><textarea value={editDraft.notes||""} onChange={e=>setEditDraft(p=>({...p,notes:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,resize:"vertical",minHeight:50,boxSizing:"border-box",fontFamily:"system-ui,sans-serif"}}/></div>
