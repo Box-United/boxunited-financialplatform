@@ -197,7 +197,7 @@ function mapCorp(item){
     contact:cv(item,CPCOL.contact), email:cv(item,CPCOL.email), phone:cv(item,CPCOL.phone),
     ptype:cv(item,CPCOL.ptype), stage:cv(item,CPCOL.stage)||"Outreach",
     revenue:cvNum(item,CPCOL.revenue), nextAction:cv(item,CPCOL.nextAction),
-    nextDate:cv(item,CPCOL.nextDate), pastFunder:cvBool(item,CPCOL.pastFunder),
+    nextDate:cv(item,CPCOL.nextDate), classDate:cv(item,CPCOL.classDate), pastFunder:cvBool(item,CPCOL.pastFunder),
     supportType:cv(item,CPCOL.supportType)};
 }
 
@@ -325,7 +325,7 @@ const CORP_BOARD = "18421286851";
 const CPCOL = {
   contact:"text_mm53c1kk", email:"email_mm53fjc1", phone:"phone_mm53pn13",
   ptype:"dropdown_mm53f960", stage:"color_mm53jwp5", revenue:"numeric_mm53qhhm",
-  nextAction:"text_mm53rryr", nextDate:"date_mm53a345", pastFunder:"boolean_mm537y69",
+  nextAction:"text_mm53rryr", nextDate:"date_mm53a345", classDate:"date_mm7xra1k", pastFunder:"boolean_mm537y69",
   supportType:"dropdown_mm53et33",
 };
 const CORP_STAGES=["Outreach","In Conversation","Proposal Sent","Active","Stewardship","Stuck"];
@@ -351,7 +351,7 @@ function EField({label,value,onSave,textarea=false,wide=false,heading=false}){
 
 // ── Goals Tracker ─────────────────────────────────────────────────────────────
 function GoalsTracker({grants,events,setEvents,loadingEvents,corps,flash}){
-  const corpClasses=useMemo(()=>(corps||[]).filter(c=>c.ptype==="Boxing Class"&&(c.stage==="Completed"||c.stage==="Active")&&c.nextDate).map(c=>{const m=parseInt((c.nextDate||"").split("-")[1])||1;return {...c,quarter:m<=3?"Q1":m<=6?"Q2":m<=9?"Q3":"Q4"};}),[corps]);
+  const corpClasses=useMemo(()=>{const goalYear=new Date().getFullYear();return (corps||[]).filter(c=>c.ptype==="Boxing Class"&&(c.stage==="Completed"||c.stage==="Active")&&(c.classDate||c.nextDate)).map(c=>{const d=c.classDate||c.nextDate;const m=parseInt((d||"").split("-")[1])||1;return {...c,goalDate:d,quarter:m<=3?"Q1":m<=6?"Q2":m<=9?"Q3":"Q4"};}).filter(c=>parseInt((c.goalDate||"").split("-")[0])===goalYear);},[corps]);
   const [activeQ,setActiveQ]=useState("Q1");
   const [collapsed,setCollapsed]=useState({});
   // Events
@@ -542,7 +542,7 @@ function GoalsTracker({grants,events,setEvents,loadingEvents,corps,flash}){
         {corpClasses.filter(c=>c.quarter===activeQ).length>0&&<div style={{marginTop:12,paddingTop:10,borderTop:"1px dashed #e2e8f0"}}>
           <div style={{fontSize:12,fontWeight:600,color:"#854F0B",marginBottom:6}}>{"🥊 Corporate Boxing Classes"} <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>synced from the Corporate tab</span></div>
           {corpClasses.filter(c=>c.quarter===activeQ).map(c=>(<div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"0.5px solid #f1f5f9"}}>
-            <div style={{flex:1}}><span style={{fontWeight:500,fontSize:13}}>{c.name}</span><span style={{fontSize:11,color:"#94a3b8",marginLeft:8}}>{c.nextDate}</span></div>
+            <div style={{flex:1}}><span style={{fontWeight:500,fontSize:13}}>{c.name}</span><span style={{fontSize:11,color:"#94a3b8",marginLeft:8}}>{c.goalDate}</span></div>
             {c.revenue>0&&<span style={{fontSize:12,fontWeight:600,color:"#854F0B"}}>{"$"+c.revenue.toLocaleString()}</span>}
             <span style={{fontSize:10,background:c.stage==="Completed"?"#dcfce7":"#f3e8ff",color:c.stage==="Completed"?"#166534":"#7e22ce",borderRadius:99,padding:"2px 8px",fontWeight:600}}>{c.stage==="Completed"?"Completed":"Scheduled"}</span>
           </div>))}
@@ -1439,7 +1439,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
   const [cView,setCView]=useState("pipeline");
   const [showAddC,setShowAddC]=useState(false);
   const [deleteCId,setDeleteCId]=useState(null);
-  const EMPTYC={name:"",contact:"",email:"",phone:"",ptype:"",stage:"Outreach",revenue:"",nextAction:"",nextDate:""};
+  const EMPTYC={name:"",contact:"",email:"",phone:"",ptype:"",stage:"Outreach",revenue:"",nextAction:"",nextDate:"",classDate:""};
   const [nc,setNc]=useState(EMPTYC);
   const isClass=c=>c.ptype==="Boxing Class";
   const pipeline=useMemo(()=>{
@@ -1447,7 +1447,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
     return corps.filter(c=>!isClass(c)).sort((a,b)=>(order[a.stage]??9)-(order[b.stage]??9)||(a.nextDate||"9999").localeCompare(b.nextDate||"9999"));
   },[corps]);
   const classes=useMemo(()=>corps.filter(isClass),[corps]);
-  const byDate=(a,b)=>(a.nextDate||"9999").localeCompare(b.nextDate||"9999");
+  const byDate=(a,b)=>((a.classDate||a.nextDate)||"9999").localeCompare((b.classDate||b.nextDate)||"9999");
   const scheduled=classes.filter(c=>c.stage==="Active").sort(byDate);
   const completed=classes.filter(c=>c.stage==="Completed").sort((a,b)=>byDate(b,a));
   const booking=classes.filter(c=>c.stage!=="Active"&&c.stage!=="Completed").sort(byDate);
@@ -1476,8 +1476,9 @@ function CorporateTab({corps,setCorps,loading,flash}){
       if(nc.revenue)cvals[CPCOL.revenue]=parseNum(String(nc.revenue))||0;
       if(nc.nextAction)cvals[CPCOL.nextAction]=nc.nextAction;
       if(nc.nextDate)cvals[CPCOL.nextDate]={date:nc.nextDate};
+      if(nc.classDate)cvals[CPCOL.classDate]={date:nc.classDate};
       const id=await mCreate(CORP_BOARD,nc.name.trim(),cvals,true);
-      setCorps(p=>[...p,{id,name:nc.name.trim(),contact:nc.contact,email:nc.email,phone:nc.phone,ptype:nc.ptype,stage:nc.stage,revenue:parseNum(String(nc.revenue))||0,nextAction:nc.nextAction,nextDate:nc.nextDate,pastFunder:false,supportType:""}]);
+      setCorps(p=>[...p,{id,name:nc.name.trim(),contact:nc.contact,email:nc.email,phone:nc.phone,ptype:nc.ptype,stage:nc.stage,revenue:parseNum(String(nc.revenue))||0,nextAction:nc.nextAction,nextDate:nc.nextDate,classDate:nc.classDate,pastFunder:false,supportType:""}]);
       setNc(EMPTYC);setShowAddC(false);flash();
     }catch{flash("Save failed");}
   };
@@ -1489,7 +1490,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
   const Row=({c,stageList,showType})=>{
     const sc=CORP_STAGE_COLORS[c.stage]||{bg:"#f1f5f9",color:"#64748b"};
     const days=daysUntil(c.nextDate);
-    return(<div style={{display:"grid",gridTemplateColumns:showType?"1.6fr 1.3fr 1fr 1.1fr 0.8fr 1.8fr 0.9fr 30px":"1.8fr 1.5fr 1.2fr 0.8fr 2fr 0.9fr 30px",gap:8,padding:"10px 14px",borderTop:"0.5px solid #e2e8f0",alignItems:"center"}}>
+    return(<div style={{display:"grid",gridTemplateColumns:showType?"1.6fr 1.3fr 1fr 1.1fr 0.8fr 0.95fr 1.5fr 0.9fr 30px":"1.8fr 1.5fr 1.2fr 0.8fr 2fr 0.9fr 30px",gap:8,padding:"10px 14px",borderTop:"0.5px solid #e2e8f0",alignItems:"center"}}>
       <div><div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{c.name}{c.pastFunder&&<span title="Past grant funder" style={{marginLeft:6,fontSize:10,background:"#dcfce7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700}}>past funder</span>}</div></div>
       <div style={{fontSize:12,color:"#475569",overflow:"hidden"}}>
         <EField value={c.contact} onSave={v=>saveField(c.id,CPCOL.contact,v,{contact:v})}/>
@@ -1504,7 +1505,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
       <div style={{fontSize:12,fontWeight:600,color:"#854F0B"}}>
         <EField value={c.revenue?String(c.revenue):""} onSave={v=>{const n=parseNum(String(v))||0;saveField(c.id,CPCOL.revenue,n,{revenue:n});}}/>
       </div>
-      <div style={{fontSize:12,color:"#475569"}}><EField value={c.nextAction} onSave={v=>saveField(c.id,CPCOL.nextAction,v,{nextAction:v})}/></div>
+      {showType&&<div style={{fontSize:11}}><input type="date" value={c.classDate||""} onChange={e=>saveField(c.id,CPCOL.classDate,e.target.value?{date:e.target.value}:null,{classDate:e.target.value})} style={{fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid #d8b4fe",width:"100%"}}/></div>}<div style={{fontSize:12,color:"#475569"}}><EField value={c.nextAction} onSave={v=>saveField(c.id,CPCOL.nextAction,v,{nextAction:v})}/></div>
       <div style={{fontSize:11}}>
         <input type="date" value={c.nextDate||""} onChange={e=>saveField(c.id,CPCOL.nextDate,e.target.value?{date:e.target.value}:null,{nextDate:e.target.value})} style={{fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid #e2e8f0",width:"100%"}}/>
         {days!==null&&days>=0&&days<=7&&c.stage!=="Completed"&&<div style={{color:"#ef4444",fontWeight:700,fontSize:10,marginTop:2}}>{days===0?"today":days+"d"}</div>}
@@ -1513,8 +1514,8 @@ function CorporateTab({corps,setCorps,loading,flash}){
       <div><button onClick={()=>setDeleteCId(c.id)} title="Delete" style={{border:"none",background:"transparent",color:"#cbd5e1",cursor:"pointer",fontSize:14}}>{"×"}</button></div>
     </div>);
   };
-  const Header=({showType})=>(<div style={{display:"grid",gridTemplateColumns:showType?"1.6fr 1.3fr 1fr 1.1fr 0.8fr 1.8fr 0.9fr 30px":"1.8fr 1.5fr 1.2fr 0.8fr 2fr 0.9fr 30px",gap:8,padding:"9px 14px",background:"#f8fafc",fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase"}}>
-    <div>Company</div><div>Contact</div>{showType&&<div>Type</div>}<div>Stage</div><div>Revenue</div><div>Next Action</div><div>Due</div><div></div>
+  const Header=({showType})=>(<div style={{display:"grid",gridTemplateColumns:showType?"1.6fr 1.3fr 1fr 1.1fr 0.8fr 0.95fr 1.5fr 0.9fr 30px":"1.8fr 1.5fr 1.2fr 0.8fr 2fr 0.9fr 30px",gap:8,padding:"9px 14px",background:"#f8fafc",fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase"}}>
+    <div>Company</div><div>Contact</div>{showType&&<div>Type</div>}<div>Stage</div><div>Revenue</div>{showType&&<div>Class Date</div>}<div>Next Action</div><div>Due</div><div></div>
   </div>);
   const Section=({title,color,bg,rows,stageList,empty,showType})=>(<div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden",marginBottom:12}}>
     <div style={{background:bg,padding:"9px 16px",fontWeight:700,fontSize:12,color}}>{title} <span style={{fontWeight:400,color:"#94a3b8"}}>({rows.length})</span></div>
@@ -1549,7 +1550,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
       </div>
       <div style={{background:"#f3e8ff",border:"1px solid #d8b4fe",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#6b21a8"}}>Scheduled and Completed classes sync automatically into Classes & Events under Grant Applications, Goals. Mark a class Completed after it runs; no double entry needed.</div>
       <div style={{display:"flex",marginBottom:10}}><span style={{fontSize:10,background:"#e0f2fe",color:"#0369a1",borderRadius:99,padding:"1px 7px"}}>live monday.com</span><button onClick={openAdd} style={{marginLeft:"auto",padding:"6px 14px",background:"#7e22ce",color:"white",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:12}}>+ Add class</button></div>
-      <Section title="Scheduled Classes" color="#7e22ce" bg="#f3e8ff" rows={scheduled} stageList={CLASS_STAGES} showType={true} empty="No classes on the calendar. Set a partner to Active with the class date in Due."/>
+      <Section title="Scheduled Classes" color="#7e22ce" bg="#f3e8ff" rows={scheduled} stageList={CLASS_STAGES} showType={true} empty="No classes on the calendar. Set a partner to Active and fill in the Class Date."/>
       <Section title="Booking + Outreach" color="#854d0e" bg="#fef9c3" rows={booking} stageList={CLASS_STAGES} showType={true} empty="No class prospects in conversation."/>
       <Section title="Completed Classes" color="#166534" bg="#dcfce7" rows={completed} stageList={CLASS_STAGES} showType={true} empty="No completed classes yet this year."/>
     </div>)}
@@ -1563,7 +1564,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
         <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>PARTNERSHIP TYPE</div><select value={nc.ptype} onChange={e=>setNc({...nc,ptype:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,background:"white"}}><option value="">{"—"}</option>{CORP_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
         <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>STAGE</div><select value={nc.stage} onChange={e=>setNc({...nc,stage:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,background:"white"}}>{[...new Set([...CORP_STAGES,...CLASS_STAGES])].map(s=><option key={s} value={s}>{s}</option>)}</select></div>
         <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>REVENUE YTD ($)</div><input value={nc.revenue} onChange={e=>setNc({...nc,revenue:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
-        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>{cView==="classes"?"CLASS DATE":"NEXT ACTION DATE"}</div><input type="date" value={nc.nextDate} onChange={e=>setNc({...nc,nextDate:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
+        <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>{cView==="classes"?"CLASS DATE":"NEXT ACTION DATE"}</div><input type="date" value={cView==="classes"?nc.classDate:nc.nextDate} onChange={e=>setNc(cView==="classes"?{...nc,classDate:e.target.value}:{...nc,nextDate:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
         <div style={{gridColumn:"1/-1"}}><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>NEXT ACTION</div><input value={nc.nextAction} onChange={e=>setNc({...nc,nextAction:e.target.value})} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box"}}/></div>
       </div>
       <div style={{display:"flex",gap:8}}><button onClick={addCorp} style={{flex:1,padding:9,background:"#1877F2",color:"white",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Add to monday.com</button><button onClick={()=>{setShowAddC(false);setNc(EMPTYC);}} style={{flex:1,padding:9,background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Cancel</button></div>
