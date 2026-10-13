@@ -158,6 +158,7 @@ function mapFunder(item) {
     relationship:cv(item,FCOL.relationship)||"Prospective Funder",
     focus:cv(item,FCOL.focus), contact:cv(item,FCOL.contact),
     email:cv(item,FCOL.email), phone:cv(item,FCOL.phone),
+    contact2:cv(item,FCOL.contact2), email2:cv(item,FCOL.email2), phone2:cv(item,FCOL.phone2),
     address:cv(item,FCOL.address), lastContact:cv(item,FCOL.lastContact),
     notes:cv(item,FCOL.notes),
     inviteOnly:cvBool(item,FCOL.inviteOnly),
@@ -311,6 +312,7 @@ const GCOL = {
 const FCOL = {
   relationship:"dropdown_mm01ssgv", focus:"dropdown_mm01ta9f", contact:"text_mm01ydp2",
   email:"email_mm012ewc", phone:"text_mm01qbfs", address:"text_mm01dzny",
+  contact2:"text_mm83nqqp", email2:"email_mm83shdy", phone2:"text_mm83c290",
   lastContact:"date_mm012vm2", notes:"long_text_mm01k5kk",
   inviteOnly:"boolean_mm01m0v5", mailCampaign:"boolean_mm018tx7", website:"text_mm01xgry",
   activeApp:"boolean_mm1kq9wc", applyAnnually:"boolean_mm1ktk72",
@@ -970,7 +972,7 @@ function FundersTab({funders,setFunders,grants,loadingFunders,flash,deleteFunder
   const [showAdd,setShowAdd]=useState(false);
   const [saving,setSaving]=useState(false);
   const [noteText,setNoteText]=useState("");
-  const EMPTY={name:"",relationship:"Prospective Funder",focus:"SBYD",contact:"",email:"",phone:"",address:"",lastContact:"",notes:"",inviteOnly:false,mailCampaign:false,activeApp:false,applyAnnually:false,website:""};
+  const EMPTY={name:"",relationship:"Prospective Funder",focus:"SBYD",contact:"",email:"",phone:"",contact2:"",email2:"",phone2:"",address:"",lastContact:"",notes:"",inviteOnly:false,mailCampaign:false,activeApp:false,applyAnnually:false,website:""};
   const [nf,setNf]=useState(EMPTY);
 
   // When delete is confirmed from parent, clear sel if it matches
@@ -979,7 +981,7 @@ function FundersTab({funders,setFunders,grants,loadingFunders,flash,deleteFunder
     // sel clearing handled after confirm in parent
   },[deleteFunderId]);
 
-  const filtered=useMemo(()=>{let f=[...funders];if(filter.rel!=="all")f=f.filter(x=>x.relationship===filter.rel);if(filter.search){const q=filter.search.toLowerCase();f=f.filter(x=>x.name.toLowerCase().includes(q)||(x.contact||"").toLowerCase().includes(q)||(x.notes||"").toLowerCase().includes(q));}f.sort((a,b)=>{const rd=REL_ORDER.indexOf(a.relationship)-REL_ORDER.indexOf(b.relationship);return rd!==0?rd:a.name.localeCompare(b.name);});return f;},[funders,filter]);
+  const filtered=useMemo(()=>{let f=[...funders];if(filter.rel!=="all")f=f.filter(x=>x.relationship===filter.rel);if(filter.search){const q=filter.search.toLowerCase();f=f.filter(x=>x.name.toLowerCase().includes(q)||(x.contact||"").toLowerCase().includes(q)||(x.contact2||"").toLowerCase().includes(q)||(x.notes||"").toLowerCase().includes(q));}f.sort((a,b)=>{const rd=REL_ORDER.indexOf(a.relationship)-REL_ORDER.indexOf(b.relationship);return rd!==0?rd:a.name.localeCompare(b.name);});return f;},[funders,filter]);
 
   const SKIP=new Set(["foundation","foundations","fund","funds","grant","grants","trust","family","community","charitable","charity","alliance","association","organization","institute","initiative","program","programs","chicago","illinois","national","american","united"]);
   const grantHistory=useMemo(()=>{
@@ -1004,6 +1006,9 @@ function FundersTab({funders,setFunders,grants,loadingFunders,flash,deleteFunder
     else if(field==="contact")colVals={[FCOL.contact]:value};
     else if(field==="email")colVals={[FCOL.email]:{email:value,text:value}};
     else if(field==="phone")colVals={[FCOL.phone]:value};
+    else if(field==="contact2")colVals={[FCOL.contact2]:value};
+    else if(field==="email2")colVals={[FCOL.email2]:{email:value,text:value}};
+    else if(field==="phone2")colVals={[FCOL.phone2]:value};
     else if(field==="address")colVals={[FCOL.address]:value};
     else if(field==="website")colVals={[FCOL.website]:value};
     else if(field==="notes")colVals={[FCOL.notes]:value};
@@ -1016,7 +1021,7 @@ function FundersTab({funders,setFunders,grants,loadingFunders,flash,deleteFunder
     try{await mUpdate(FUNDERS_BOARD,id,colVals);flash();}catch{flash("Save failed");}
   };
   const logNote=async(id)=>{if(!noteText.trim())return;const ts=new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"2-digit"});const fu=funders.find(f=>f.id===id);const combined=fu.notes?fu.notes+"\n\n["+ts+"] "+noteText.trim():"["+ts+"] "+noteText.trim();const today=new Date().toISOString().split("T")[0];try{await Promise.all([uf(id,"notes",combined),uf(id,"lastContact",today)]);}catch{flash("Save failed");return;}setNoteText("");};
-  const addFunder=async()=>{if(!nf.name.trim())return;setSaving(true);try{const cv2={[FCOL.relationship]:{labels:[nf.relationship]},[FCOL.focus]:{labels:[nf.focus]},[FCOL.contact]:nf.contact,[FCOL.email]:{email:nf.email,text:nf.email},[FCOL.phone]:nf.phone,[FCOL.address]:nf.address,[FCOL.notes]:nf.notes,[FCOL.website]:nf.website,[FCOL.inviteOnly]:nf.inviteOnly?{checked:"true"}:{checked:"false"},[FCOL.mailCampaign]:nf.mailCampaign?{checked:"true"}:{checked:"false"},[FCOL.activeApp]:nf.activeApp?{checked:"true"}:{checked:"false"},[FCOL.applyAnnually]:nf.applyAnnually?{checked:"true"}:{checked:"false"}};const newId=await mCreate(FUNDERS_BOARD,nf.name,cv2);setFunders(p=>[...p,{...nf,id:newId}]);setNf(EMPTY);setShowAdd(false);flash("Funder added ✓");}catch{flash("Failed");}finally{setSaving(false);}};
+  const addFunder=async()=>{if(!nf.name.trim())return;setSaving(true);try{const cv2={[FCOL.relationship]:{labels:[nf.relationship]},[FCOL.focus]:{labels:[nf.focus]},[FCOL.contact]:nf.contact,[FCOL.email]:{email:nf.email,text:nf.email},[FCOL.phone]:nf.phone,[FCOL.contact2]:nf.contact2,[FCOL.email2]:{email:nf.email2,text:nf.email2},[FCOL.phone2]:nf.phone2,[FCOL.address]:nf.address,[FCOL.notes]:nf.notes,[FCOL.website]:nf.website,[FCOL.inviteOnly]:nf.inviteOnly?{checked:"true"}:{checked:"false"},[FCOL.mailCampaign]:nf.mailCampaign?{checked:"true"}:{checked:"false"},[FCOL.activeApp]:nf.activeApp?{checked:"true"}:{checked:"false"},[FCOL.applyAnnually]:nf.applyAnnually?{checked:"true"}:{checked:"false"}};const newId=await mCreate(FUNDERS_BOARD,nf.name,cv2);setFunders(p=>[...p,{...nf,id:newId}]);setNf(EMPTY);setShowAdd(false);flash("Funder added ✓");}catch{flash("Failed");}finally{setSaving(false);}};
 
   if(loadingFunders)return<div style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Loading funders from monday.com...</div>;
   return(<div style={{display:"flex",gap:0,minHeight:"65vh",background:"white",borderRadius:12,alignItems:"flex-start",boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
@@ -1081,7 +1086,7 @@ function FundersTab({funders,setFunders,grants,loadingFunders,flash,deleteFunder
       <div style={{background:"white",borderRadius:10,padding:"14px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.08)",marginBottom:12}}>
         <div style={{fontSize:12,fontWeight:700,color:"#1e293b",marginBottom:12}}>Contact Info <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>(click to edit — saves to monday.com)</span></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {[["CONTACT","contact"],["EMAIL","email"],["PHONE","phone"],["LAST CONTACT","lastContact"],["WEBSITE","website"]].map(([l,f])=>(<EField key={f} label={l} value={sel[f]||""} onSave={v=>uf(sel.id,f,v)}/>))}
+          {[["PRIMARY CONTACT","contact"],["SECONDARY CONTACT","contact2"],["PRIMARY EMAIL","email"],["SECONDARY EMAIL","email2"],["PRIMARY PHONE","phone"],["SECONDARY PHONE","phone2"],["LAST CONTACT","lastContact"],["WEBSITE","website"]].map(([l,f])=>(<EField key={f} label={l} value={sel[f]||""} onSave={v=>uf(sel.id,f,v)}/>))}
           <div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,marginBottom:3}}>FOCUS AREA</div><select value={sel.focus||""} onChange={e=>uf(sel.id,"focus",e.target.value)} style={{width:"100%",padding:"5px 7px",borderRadius:5,border:"1px solid #e2e8f0",fontSize:11,background:"white"}}><option value="">—</option>{FOCUS_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}</select></div>
         </div>
         <div style={{marginTop:8}}><EField label="ADDRESS" value={sel.address||""} onSave={v=>uf(sel.id,"address",v)} wide/></div>
@@ -1118,7 +1123,7 @@ function FundersTab({funders,setFunders,grants,loadingFunders,flash,deleteFunder
     {showAdd&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"white",borderRadius:14,padding:24,width:500,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}><h3 style={{margin:"0 0 16px",fontSize:15,fontWeight:700}}>Add New Funder → monday.com</h3>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
         <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>FUNDER NAME</label><input value={nf.name} onChange={e=>setNf(p=>({...p,name:e.target.value}))} style={{width:"100%",padding:"7px 9px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/></div>
-        {[["RELATIONSHIP","relationship","rel"],["FOCUS","focus","focus"],["CONTACT","contact","text"],["EMAIL","email","text"],["PHONE","phone","text"],["WEBSITE","website","text"]].map(([label,field,type])=>(<div key={field}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>{label}</label>{type==="rel"?<select value={nf[field]} onChange={e=>setNf(p=>({...p,[field]:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,background:"white",boxSizing:"border-box"}}>{REL_ORDER.map(r=><option key={r} value={r}>{r}</option>)}</select>:type==="focus"?<select value={nf[field]} onChange={e=>setNf(p=>({...p,[field]:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,background:"white",boxSizing:"border-box"}}><option value="">—</option>{FOCUS_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}</select>:<input value={nf[field]||""} onChange={e=>setNf(p=>({...p,[field]:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/>}</div>))}
+        {[["RELATIONSHIP","relationship","rel"],["FOCUS","focus","focus"],["PRIMARY CONTACT","contact","text"],["SECONDARY CONTACT","contact2","text"],["PRIMARY EMAIL","email","text"],["SECONDARY EMAIL","email2","text"],["PRIMARY PHONE","phone","text"],["SECONDARY PHONE","phone2","text"],["WEBSITE","website","text"]].map(([label,field,type])=>(<div key={field}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>{label}</label>{type==="rel"?<select value={nf[field]} onChange={e=>setNf(p=>({...p,[field]:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,background:"white",boxSizing:"border-box"}}>{REL_ORDER.map(r=><option key={r} value={r}>{r}</option>)}</select>:type==="focus"?<select value={nf[field]} onChange={e=>setNf(p=>({...p,[field]:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,background:"white",boxSizing:"border-box"}}><option value="">—</option>{FOCUS_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}</select>:<input value={nf[field]||""} onChange={e=>setNf(p=>({...p,[field]:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/>}</div>))}
         <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,fontWeight:600,color:"#64748b",display:"block",marginBottom:3}}>ADDRESS</label><input value={nf.address||""} onChange={e=>setNf(p=>({...p,address:e.target.value}))} style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:12,boxSizing:"border-box"}}/></div>
         <div style={{gridColumn:"1/-1",display:"flex",gap:16,flexWrap:"wrap"}}>
           <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,cursor:"pointer"}}><input type="checkbox" checked={nf.inviteOnly||false} onChange={e=>setNf(p=>({...p,inviteOnly:e.target.checked}))}/>✉ Invite Only</label>
