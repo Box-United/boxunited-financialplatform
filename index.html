@@ -1476,7 +1476,7 @@ function CorporateTab({corps,setCorps,loading,flash}){
       const cvals={[CPCOL.stage]:{label:nc.stage}};
       if(nc.contact)cvals[CPCOL.contact]=nc.contact;
       if(nc.email)cvals[CPCOL.email]={email:nc.email,text:nc.email};
-      if(nc.phone)cvals[CPCOL.phone]=nc.phone;
+      if(nc.phone){const ph=nc.phone.replace(/[^\d]/g,"");if(ph)cvals[CPCOL.phone]={phone:ph,countryShortName:"US"};}
       if(nc.ptype)cvals[CPCOL.ptype]={labels:[nc.ptype]};
       if(nc.revenue)cvals[CPCOL.revenue]=parseNum(String(nc.revenue))||0;
       if(nc.nextAction)cvals[CPCOL.nextAction]=nc.nextAction;
