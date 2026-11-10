@@ -738,6 +738,8 @@ function SpendDownTab({grants,setGrants,periods,setPeriods,loadingPeriods,flash}
   const [editTotalId,setEditTotalId]=useState(null);
   const [editTotalVal,setEditTotalVal]=useState("");
   const [showPast,setShowPast]=useState(new Set());
+  const [editDueKey,setEditDueKey]=useState(null);
+  const [editDueVal,setEditDueVal]=useState("");
   const toDateStr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   const trackedGrants=grants.filter(g=>g.expenditureTracking);
 
@@ -746,13 +748,28 @@ function SpendDownTab({grants,setGrants,periods,setPeriods,loadingPeriods,flash}
     const start=parseLocalDate(grant.perfStart);const end=parseLocalDate(grant.perfEnd);
     if(!start||!end)return[];
     const result=[];
+    const MN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const clip=d=>d<start?start:(d>end?end:d);
     if(grant.trackingFrequency==="Monthly"){
       let d=new Date(start.getFullYear(),start.getMonth(),1);
       while(d<=end){
         const label=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});
         const due=new Date(d.getFullYear(),d.getMonth()+1,15);
-        result.push({label,dueStr:toDateStr(due)});
+        const pS=clip(d), pE=clip(new Date(d.getFullYear(),d.getMonth()+1,0));
+        result.push({label,dueStr:toDateStr(due),startStr:toDateStr(pS),endStr:toDateStr(pE)});
         d=new Date(d.getFullYear(),d.getMonth()+1,1);
+      }
+    } else if(grant.trackingFrequency==="Grant Quarters"){
+      // Quarters anchored to the grant's performance start month (e.g. Sep-Nov, Dec-Feb, ...).
+      // Default invoice due date = last day of the period (invoiced during the final month); editable per period.
+      let d=new Date(start.getFullYear(),start.getMonth(),1);
+      while(d<=end){
+        const pS=clip(d), pE=clip(new Date(d.getFullYear(),d.getMonth()+3,0));
+        const label=pS.getFullYear()===pE.getFullYear()
+          ?`${MN[pS.getMonth()]}-${MN[pE.getMonth()]} ${pE.getFullYear()}`
+          :`${MN[pS.getMonth()]} ${pS.getFullYear()}-${MN[pE.getMonth()]} ${pE.getFullYear()}`;
+        result.push({label,dueStr:toDateStr(pE),startStr:toDateStr(pS),endStr:toDateStr(pE)});
+        d=new Date(d.getFullYear(),d.getMonth()+3,1);
       }
     } else {
       let d=new Date(start.getFullYear(),Math.floor(start.getMonth()/3)*3,1);
@@ -760,7 +777,8 @@ function SpendDownTab({grants,setGrants,periods,setPeriods,loadingPeriods,flash}
         const q=Math.floor(d.getMonth()/3)+1;
         const label=`Q${q} ${d.getFullYear()}`;
         const due=new Date(d.getFullYear(),Math.floor(d.getMonth()/3)*3+3,15);
-        result.push({label,dueStr:toDateStr(due)});
+        const pS=clip(d), pE=clip(new Date(d.getFullYear(),d.getMonth()+3,0));
+        result.push({label,dueStr:toDateStr(due),startStr:toDateStr(pS),endStr:toDateStr(pE)});
         d=new Date(d.getFullYear(),d.getMonth()+3,1);
       }
     }
@@ -785,6 +803,24 @@ function SpendDownTab({grants,setGrants,periods,setPeriods,loadingPeriods,flash}
         flash();
       }catch{flash("Save failed");}
     }
+  };
+
+  const saveDueDate=async(grant,label,val)=>{
+    setEditDueKey(null);
+    if(!val)return;
+    const existing=periods.find(p=>p.grantId===grant.id&&p.periodLabel===label);
+    flash("Saving...");
+    try{
+      if(existing){
+        await mUpdate(SPEND_BOARD,existing.id,{[SPCOL.dueDate]:{date:val}});
+        setPeriods(p=>p.map(x=>x.id===existing.id?{...x,dueDate:val}:x));
+      } else {
+        const cv2={[SPCOL.grantId]:grant.id,[SPCOL.grantName]:grant.name,[SPCOL.periodLabel]:label,[SPCOL.dueDate]:{date:val},[SPCOL.allocationDone]:{checked:"false"}};
+        const newId=await mCreate(SPEND_BOARD,`${grant.name} — ${label}`,cv2);
+        setPeriods(p=>[...p,{id:newId,grantId:grant.id,grantName:grant.name,periodLabel:label,dueDate:val,allocationDone:false,amountSpent:0,notes:""}]);
+      }
+      flash();
+    }catch{flash("Save failed");}
   };
 
   const saveTotalSpent=async(grantId,val)=>{
@@ -815,8 +851,8 @@ function SpendDownTab({grants,setGrants,periods,setPeriods,loadingPeriods,flash}
       const spent=grant.totalSpent||0;
       const pct=budget>0?Math.min(100,Math.round(spent/budget*100)):0;
       const remaining=budget-spent;
-      const allP=genPeriods(grant);
       const grantP=periods.filter(p=>p.grantId===grant.id);
+      const allP=genPeriods(grant).map(p=>{const m=grantP.find(x=>x.periodLabel===p.label);return m&&m.dueDate?{...p,dueStr:m.dueDate}:p;});
       const pastP=allP.filter(({dueStr})=>{const d=parseLocalDate(dueStr);return d&&d<TODAY;});
       const futureP=allP.filter(({dueStr})=>{const d=parseLocalDate(dueStr);return!d||d>=TODAY;});
       const expanded=showPast.has(grant.id);
@@ -851,16 +887,27 @@ function SpendDownTab({grants,setGrants,periods,setPeriods,loadingPeriods,flash}
           {allP.length===0
             ?<div style={{fontSize:12,color:"#94a3b8",fontStyle:"italic"}}>Set Performance Start and End dates in the grant to generate periods.</div>
             :<>
-              {visibleP.map(({label,dueStr})=>{
+              {visibleP.map(({label,dueStr,startStr,endStr})=>{
                 const match=grantP.find(p=>p.periodLabel===label);
                 const done=match?.allocationDone||false;
                 const days=daysUntil(dueStr);
                 const isOverdue=days!==null&&days<0&&!done;
+                const dueKey=grant.id+"|"+label;
                 return(<div key={label} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"0.5px solid #f1f5f9"}}>
                   <input type="checkbox" checked={done} onChange={()=>toggleAllocation(grant,label,dueStr,done)} style={{width:16,height:16,cursor:"pointer",accentColor:"#10b981",flexShrink:0}}/>
                   <div style={{flex:1}}>
-                    <span style={{fontSize:12,fontWeight:done?400:600,color:done?"#94a3b8":"#1e293b",textDecoration:done?"line-through":"none"}}>{label}</span>
-                    {dueStr&&<span style={{fontSize:11,marginLeft:8,color:isOverdue?"#ef4444":days!==null&&days<=14&&!done?"#d97706":"#94a3b8"}}>Due {dueStr}{isOverdue?" — OVERDUE":days!==null&&!done&&days<=14?` — ${days}d`:""}</span>}
+                    <div>
+                      <span style={{fontSize:12,fontWeight:done?400:600,color:done?"#94a3b8":"#1e293b",textDecoration:done?"line-through":"none"}}>{label}</span>
+                      {editDueKey===dueKey
+                        ?<span style={{marginLeft:8,display:"inline-flex",alignItems:"center",gap:4}}>
+                          <input type="date" autoFocus value={editDueVal} onChange={e=>setEditDueVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveDueDate(grant,label,editDueVal);if(e.key==="Escape")setEditDueKey(null);}} style={{fontSize:11,padding:"1px 4px",borderRadius:4,border:"1px solid #1877F2"}}/>
+                          <button onClick={()=>saveDueDate(grant,label,editDueVal)} style={{padding:"2px 8px",background:"#1877F2",color:"white",border:"none",borderRadius:4,fontSize:10,cursor:"pointer"}}>Save</button>
+                          <button onClick={()=>setEditDueKey(null)} style={{padding:"2px 6px",background:"transparent",border:"1px solid #e2e8f0",borderRadius:4,fontSize:10,cursor:"pointer",color:"#64748b"}}>✕</button>
+                        </span>
+                        :<span onClick={()=>{setEditDueKey(dueKey);setEditDueVal(dueStr||"");}} title="Click to set a custom invoice due date" style={{fontSize:11,marginLeft:8,cursor:"pointer",textDecoration:"underline dotted",color:isOverdue?"#ef4444":days!==null&&days<=14&&!done?"#d97706":"#94a3b8"}}>Invoice due {dueStr||"(set date)"}{isOverdue?" — OVERDUE":days!==null&&!done&&days<=14?` — ${days}d`:""} ✎</span>
+                      }
+                    </div>
+                    {startStr&&endStr&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>Period of performance: {startStr} to {endStr}</div>}
                   </div>
                   {done&&<span style={{fontSize:10,background:"#d1fae5",color:"#166534",borderRadius:99,padding:"2px 7px",fontWeight:600,flexShrink:0}}>Done ✓</span>}
                 </div>);
@@ -1701,7 +1748,7 @@ function App(){
       if(editDraft.perfStart)cv2[GCOL.perfStart]={date:editDraft.perfStart};
       if(editDraft.perfEnd)cv2[GCOL.perfEnd]={date:editDraft.perfEnd};
       if(editDraft.totalSpent!=null)cv2[GCOL.totalSpent]=editDraft.totalSpent;
-      await mUpdate(GRANTS_BOARD,editId,cv2);flash();
+      await mUpdate(GRANTS_BOARD,editId,cv2,true);flash();
     }catch{flash("Save failed");if(prevGrant)setGrants(g=>g.map(x=>x.id===editId?prevGrant:x));}
   };
 
@@ -1735,7 +1782,7 @@ function App(){
       if(draft.trackingFrequency)cv2[GCOL.trackingFrequency]={labels:[draft.trackingFrequency]};
       if(draft.perfStart)cv2[GCOL.perfStart]={date:draft.perfStart};
       if(draft.perfEnd)cv2[GCOL.perfEnd]={date:draft.perfEnd};
-      const newId=await mCreate(GRANTS_BOARD,draft.name,cv2);
+      const newId=await mCreate(GRANTS_BOARD,draft.name,cv2,true);
       setGrants(g=>g.map(x=>x.id===draft.id?{...x,id:newId}:x));
       flash();
     }catch(e){flash("Save failed: "+(e&&e.message?e.message:"unknown error"));}
@@ -2134,7 +2181,7 @@ function App(){
         {newGrant.expenditureTracking&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           <div><label style={{fontSize:10,fontWeight:600,color:"#64748b",display:"block",marginBottom:2}}>FREQUENCY</label>
             <select value={newGrant.trackingFrequency||"Monthly"} onChange={e=>setNewGrant(p=>({...p,trackingFrequency:e.target.value}))} style={{width:"100%",padding:"5px 7px",borderRadius:5,border:"1px solid #e2e8f0",fontSize:12,background:"white"}}>
-              <option>Monthly</option><option>Quarterly</option>
+              <option>Monthly</option><option value="Quarterly">Quarterly (Calendar)</option><option value="Grant Quarters">Grant Quarters (Custom)</option>
             </select>
           </div>
           <div><label style={{fontSize:10,fontWeight:600,color:"#64748b",display:"block",marginBottom:2}}>PERFORMANCE START</label>
@@ -2247,8 +2294,9 @@ function App(){
           {editDraft.expenditureTracking&&<>
             <div><label style={{fontSize:10,fontWeight:600,color:"#64748b",display:"block",marginBottom:2}}>FREQUENCY</label>
               <select value={editDraft.trackingFrequency||"Monthly"} onChange={e=>setEditDraft(p=>({...p,trackingFrequency:e.target.value}))} style={{width:"100%",padding:"5px 7px",borderRadius:5,border:"1px solid #e2e8f0",fontSize:12,background:"white"}}>
-                <option>Monthly</option><option>Quarterly</option>
+                <option>Monthly</option><option value="Quarterly">Quarterly (Calendar)</option><option value="Grant Quarters">Grant Quarters (Custom)</option>
               </select>
+              {editDraft.trackingFrequency==="Grant Quarters"&&<div style={{fontSize:9,color:"#9a3412",marginTop:3}}>Quarters follow the Performance Start month (e.g. Sep-Nov invoiced in Nov). Click any due date on the Spend Down tab to customize it.</div>}
             </div>
             <div><label style={{fontSize:10,fontWeight:600,color:"#64748b",display:"block",marginBottom:2}}>TOTAL SPENT TO DATE</label>
               <input type="number" value={editDraft.totalSpent||0} onChange={e=>setEditDraft(p=>({...p,totalSpent:Number(e.target.value)}))} style={{width:"100%",padding:"5px 7px",borderRadius:5,border:"1px solid #e2e8f0",fontSize:12}}/>
